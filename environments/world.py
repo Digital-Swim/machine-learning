@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-
+import matplotlib.pyplot as plt
 class World(ABC):
 
     @abstractmethod
@@ -22,6 +22,10 @@ class World(ABC):
     def is_terminal(self, state):
         pass
 
+    def init_figure(self):
+        if not hasattr(self, "fig"):
+            self.fig, (self.ax, self.ax_reward) = plt.subplots(1, 2, figsize=(14, 6))
+
     def compute_state_value(self, state, q_table):
         return max([q_table.get((state, a), 0.0) for a in self.get_actions()])
 
@@ -30,7 +34,6 @@ class World(ABC):
         return max(q, key=q.get)
 
     def show_policy(self, q_table):
-        import matplotlib.pyplot as plt
         plt.figure(figsize=(6,6))
         self.render(q_table=q_table)
         plt.show()
@@ -84,27 +87,47 @@ class World(ABC):
 
         plt.ioff()
         plt.show()
-              
-    def train(self, agent, episodes=1000, visualize=False, delay=0.1, show_heatmap=False):
-        import matplotlib.pyplot as plt
 
+    def plot_rewards(self, rewards):
+        self.init_figure()
+        ax = self.ax_reward
+        ax.clear()
+
+        ax.plot(rewards)
+        ax.set_title("Convergence (Reward vs Episode)")
+        ax.set_xlabel("Episode")
+        ax.set_ylabel("Total Reward")
+        
+    def train(self, agent, episodes=1000, visualize=False, delay=0.1, show_heatmap=False):
+        episode_rewards = []
+        
         if visualize:
             plt.ion()
 
         for _ in range(episodes):
             state = self.reset()
             done = False
+            total_reward = 0
 
             while not done:
                 action = agent.choose_action(state)
                 next_state, reward, done = self.step(state, action)
+                total_reward += reward
 
                 agent.learn(state, action, reward, next_state)
                 state = next_state
 
+               
                 if visualize:
+                    # LEFT: grid
                     self.render(q_table=agent.q_table, state=state, show_heatmap=show_heatmap)
+
+                    # RIGHT: reward graph
+                    self.plot_rewards(episode_rewards)
+
                     plt.pause(delay)
+            
+            episode_rewards.append(total_reward)
 
         if visualize:
             plt.ioff()

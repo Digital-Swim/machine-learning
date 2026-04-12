@@ -34,7 +34,7 @@ def env_test():
 def QLearningTest():
     env = GridWorld(start=(0, 0), goal=(9, 9))
     agent = QLearningAgent(actions=env.get_actions())
-    env.train(agent, episodes=100, visualize=True, delay=0.1, show_heatmap=True)
+    env.train(agent, episodes=100, visualize=True, delay=0.01, show_heatmap=True)
     env.animate_policy(
         agent.q_table,
         max_steps=100,
@@ -51,5 +51,5 @@ def DynaQTest():
 
 if __name__ == "__main__":
     # env_test()
-    #QLearningTest()
-    DynaQTest()
+    QLearningTest()
+    #DynaQTest()

@@ -82,18 +82,18 @@ class GridWorld(World):
         return grid
 
     def render(self, q_table=None, state=None, show_heatmap=False):
-        if not hasattr(self, "fig"):
-            self.fig, self.ax = plt.subplots(figsize=(10,10))
-
+        self.init_figure()
         ax = self.ax
         ax.clear()
 
-        if show_heatmap and q_table:
+        if show_heatmap and q_table is not None:
             value_grid = self.compute_value_grid(q_table)
 
             im = ax.imshow(
                 value_grid.T,
-                extent=[0, self.size[0], self.size[1], 0]
+                extent=[0, self.size[0], self.size[1], 0],
+                vmin=-5,
+                vmax=10,
             )
 
             if not hasattr(self, "colorbar"):
