@@ -2,7 +2,9 @@ import random
 
 from agents.agent import Agent
 from agents.dyna_q import DyncaQAgent
+from agents.priority_sweep import PrioritySweepAgent
 from agents.q_learning import QLearningAgent
+from agents.trajectory_sampling import TrajectorySamplingAgent
 from environments.grid_world import GridWorld
 from environments.world import World
 
@@ -34,22 +36,26 @@ def env_test():
 def QLearningTest():
     env = GridWorld(start=(0, 0), goal=(9, 9))
     agent = QLearningAgent(actions=env.get_actions())
-    env.train(agent, episodes=100, visualize=True, delay=0.01, show_heatmap=True)
-    env.animate_policy(
-        agent.q_table,
-        max_steps=100,
-        delay=0.5,
-        deterministic=False
-    )
+    env.train(agent, episodes=100, visualize=True, delay=0.1, show_heatmap=True)
     
 
 def DynaQTest():
     env = GridWorld(start=(9, 0), goal=(9, 9))
     agent = DyncaQAgent(actions=env.get_actions())
     env.train(agent, episodes=20, visualize=True, delay=0.1, show_heatmap=True)
-    env.animate_policy(agent.q_table, max_steps=100, delay=0.1, deterministic=False)
+
+def PrioritySweepTest():
+    env = GridWorld(start=(0, 0), goal=(9, 9))
+    agent = PrioritySweepAgent(actions=env.get_actions())
+    env.train(agent, episodes=100, visualize=True, delay=0.05, show_heatmap=True)
+
+def TrajectoryTest():
+    env = GridWorld(start=(0, 0), goal=(9, 9))
+    agent = TrajectorySamplingAgent(actions=env.get_actions()) 
+    env.train(agent, episodes=100, visualize=True, delay=0.05, show_heatmap=True)
 
 if __name__ == "__main__":
     # env_test()
-    QLearningTest()
-    #DynaQTest()
+    # QLearningTest()
+    # DynaQTest()
+    PrioritySweepTest()
