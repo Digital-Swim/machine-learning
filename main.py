@@ -1,0 +1,51 @@
+import random
+
+from agents.agent import Agent
+from agents.dyna_q import DyncaQAgent
+from agents.q_learning import QLearningAgent
+from environments.grid_world import GridWorld
+from environments.world import World
+
+
+def train_agent(agent: Agent, env:World, episodes=1000):
+    for episode in range(episodes):
+        state = env.reset()
+        done = False
+        while not done:
+            action = agent.choose_action(state)
+            next_state, reward, done = env.step(state, action)
+            agent.learn(state, action, reward, next_state)
+            state = next_state 
+            env.show_policy(agent.q_table)
+            
+            
+def env_test():
+    env = GridWorld()
+    state = env.reset()
+    for _ in range(20):
+        action = random.choice(env.get_actions())
+        next_state, reward, done = env.step(state, action)
+        print(state, action, "->", next_state, reward)
+        state = next_state
+        if done:
+            break        
+            
+
+def QLearningTest():
+    env = GridWorld(start=(0, 5), goal=(9, 9))
+    agent = QLearningAgent(actions=env.actions)
+    train_agent(agent, env, episodes=10)
+    env.animate_policy(agent.q_table, max_steps=100, delay=1.0, deterministic=False)
+    
+def DynaQTest():
+    env = GridWorld(start=(0, 5), goal=(9, 9))
+    agent = DyncaQAgent(actions=env.actions)
+    train_agent(agent, env, episodes=10)
+    env.animate_policy(agent.q_table, max_steps=100, delay=1.0, deterministic=False)
+
+
+
+if __name__ == "__main__":
+    # env_test()
+    # QLearningTest()
+    DynaQTest()
