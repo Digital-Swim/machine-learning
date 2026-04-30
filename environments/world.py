@@ -113,7 +113,8 @@ class World(ABC):
                 action = agent.choose_action(state)
                 next_state, reward, done = self.step(state, action)
                 total_reward += reward
-
+                
+                print(f"Episode {_+1}, State: {state}, Action: {action}, Reward: {reward}, Next State: {next_state}, Done: {done}")
                 agent.learn(state, action, reward, next_state)
                 state = next_state
 

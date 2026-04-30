@@ -5,6 +5,7 @@ from agents.dyna_q import DyncaQAgent
 from agents.priority_sweep import PrioritySweepAgent
 from agents.q_learning import QLearningAgent
 from agents.trajectory_sampling import TrajectorySamplingAgent
+from environments.dino import DinoWorld
 from environments.grid_world import GridWorld
 from environments.world import World
 
@@ -33,6 +34,12 @@ def env_test():
             break        
             
 
+def DinoTestQLearning():
+    env = DinoWorld()
+    agent = QLearningAgent(actions=env.get_actions())
+    env.train(agent, episodes=100, visualize=True, delay=0.1, show_heatmap=True)
+    
+
 def QLearningTest():
     env = GridWorld(start=(0, 0), goal=(9, 9))
     agent = QLearningAgent(actions=env.get_actions())
@@ -58,4 +65,5 @@ if __name__ == "__main__":
     # env_test()
     # QLearningTest()
     # DynaQTest()
-    PrioritySweepTest()
+    #PrioritySweepTest()
+    DinoTestQLearning()
