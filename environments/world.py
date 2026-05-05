@@ -7,7 +7,7 @@ class World(ABC):
         pass
 
     @abstractmethod
-    def step(self, state, action):
+    def step(self, state, action, reward=None):
         pass
 
     @abstractmethod
@@ -108,16 +108,17 @@ class World(ABC):
             state = self.reset()
             done = False
             total_reward = 0
-
+            preveReward = 0
             while not done:
                 action = agent.choose_action(state)
-                next_state, reward, done = self.step(state, action)
+                #print(f"Episode {_+1}, State: {state}, Action: {action}")
+                next_state, reward, done = self.step(state, action, reward=preveReward)
                 total_reward += reward
                 
-                print(f"Episode {_+1}, State: {state}, Action: {action}, Reward: {reward}, Next State: {next_state}, Done: {done}")
+                #print(f"Episode {_+1}, State: {state}, Action: {action}, Reward: {reward}, Next State: {next_state}, Done: {done}")
                 agent.learn(state, action, reward, next_state)
                 state = next_state
-
+                preveReward = reward
                
                 if visualize:
                     # LEFT: grid
@@ -133,3 +134,4 @@ class World(ABC):
         if visualize:
             plt.ioff()
             plt.show()
+            

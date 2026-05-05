@@ -1,4 +1,5 @@
 import random
+from time import sleep, time
 
 from agents.agent import Agent
 from agents.dyna_q import DyncaQAgent
@@ -36,8 +37,9 @@ def env_test():
 
 def DinoTestQLearning():
     env = DinoWorld()
+    env.reset()            
     agent = QLearningAgent(actions=env.get_actions())
-    env.train(agent, episodes=100, visualize=True, delay=0.1, show_heatmap=True)
+    env.train(agent, episodes=100, visualize=False, delay=0.1, show_heatmap=False)
     
 
 def QLearningTest():
