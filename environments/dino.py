@@ -1,3 +1,4 @@
+from agents.agent import Agent
 from environments.world import World
 from playwright.sync_api import sync_playwright, Playwright
 import time
@@ -17,7 +18,7 @@ class DinoGame:
             self.page.wait_for_timeout(1000)  # Wait for the game to start
             return self.get_env_state()
     
-    
+       
     
     def start(self):
         self.playwright = sync_playwright().start()
@@ -25,50 +26,7 @@ class DinoGame:
         self.page = self.browser.new_page()
         self.page.goto(self.dino_world_url)
         self.page.wait_for_selector("canvas")
-         # inject RL loop
-        self.page.evaluate("""
-        () => {
-            if (window.__rlLoop) return;
-            window.__rlLoop = true;
-
-            const r = window.Runner.instance_;
-
-            const computeState = () => {
-                const player = r.tRex;
-                const obstacles = r.horizon.obstacles;
-
-                const velocity = Math.round(r.currentSpeed * 10);
-
-                let distance = null;
-                let timeToCollision = null;
-
-                if (obstacles.length > 0) {
-                    const o = obstacles[0];
-
-                    if (o.xPos + o.width >= player.xPos) {
-                        distance = o.xPos - (player.xPos + player.config.WIDTH);
-
-                        if (velocity > 0) {
-                            timeToCollision = distance / velocity;
-                        }
-                    }
-                }
-
-                window.__rlState = {
-                    velocity,
-                    distance,
-                    timeToCollision,
-                    crashed: r.crashed,
-                    isJumping: player.jumping ? 1 : 0
-                };
-
-                requestAnimationFrame(computeState);
-            };
-
-            computeState();
-        }
-        """)
-        
+        self.last_passed_obs_id = None
         return self
         
     def close(self):
@@ -176,76 +134,32 @@ class DinoGame:
             draw();
         }
         """)
-        
-    def get_env_state1(self):
-        stateInfo = self.page.evaluate("""
-        () => {
-            if (!window.Runner || !window.Runner.instance_) return null;
-            const r = window.Runner.instance_;
-            const obs = r.horizon.obstacles;
-            return {
-                speed: r.currentSpeed,
-                jumping: r.tRex.jumping,
-                xPos: obs.length > 0 ? obs[0].xPos : null,
-                yPos: obs.length > 0 ? obs[0].yPos : null,
-                width: obs.length > 0 ? obs[0].width : null,
-                playerY: r.tRex.yPos,
-                playerX: r.tRex.xPos,
-                playerWidth: r.tRex.width,
-                playerHeight: r.tRex.height,
-                obstacles: obs.map(o => ({xPos: o.xPos, yPos: o.yPos, width: o.width, height: o.height})),
-                terminal:  r.crashed  
-            };  
-        }
-        """)
-                
-        if stateInfo is not None:
-            # Get time to collision for the obstacle in front of the player, if any ignoring those that have already been passed
-            obstacle = None
-            for obs in stateInfo['obstacles']:
-                if obs['xPos'] > stateInfo['playerX'] + 10:  # Only consider obstacles that are ahead of the player
-                    obstacle = obs
-                    break
-            time_to_collision = (obstacle['xPos'] - (stateInfo['playerX'] + 10 )) / stateInfo['speed'] if obstacle is not None and stateInfo['speed'] > 0 else float('inf')
-
-            # bucket time to collision into 3 second intervals for better state representation and round to nearest bucket, ignore buckets above 5
-            if time_to_collision == float('inf'):
-                time_to_collision = 15  # Cap the time to collision at 15 seconds for state representation
-            time_to_collision = round(time_to_collision / 3) * 3
-            time_to_collision = min(time_to_collision, 15)
-            
-            # check if we passed an obstacle and give a reward for that, otherwise give a small positive reward for surviving each step
-            reward = 0.1  # Default small positive reward for surviving each step
-            if obstacle is not None and obstacle['xPos'] < stateInfo['playerX'] - 10:  # Passed an obstacle
-                reward = 10
-            # check for terminal state and give a negative reward for that
-            if stateInfo["terminal"]:
-                reward = -100
-            
-            return (round(stateInfo['speed']), time_to_collision), reward, stateInfo["terminal"]
-        
-        return None, 0, False  # Default state, reward, and terminal flag if game state is not available
-            
-    # Returns state with speed, distance to nearest obstacle, and whether it's a terminal state (collision) and reward
 
     def get_env_state(self, previous_reward=None):
         stateInfo = self.page.evaluate("""
         () => {
             if (!window.Runner || !window.Runner.instance_) return null;
             const r = window.Runner.instance_;
+            const player = r.tRex;
             const obs = r.horizon.obstacles;
+
+            // assign IDs if missing
+            obs.forEach((o, i) => {
+                if (o.__id === undefined) {
+                    o.__id = Date.now() + Math.random();
+                }
+            });
+
             return {
-                speed: r.currentSpeed,
+                obstacles: obs.map(o => ({xPos: o.xPos, yPos: o.yPos, width: o.width, height: o.height, id: o.__id})),
+                playerX: player.xPos,
+                playerWidth: player.config.WIDTH,
+                terminal: r.crashed,
+                speed:r.currentSpeed,
                 jumping: r.tRex.jumping,
-                xPos: obs.length > 0 ? obs[0].xPos : null,
-                yPos: obs.length > 0 ? obs[0].yPos : null,
-                width: obs.length > 0 ? obs[0].width : null,
-                playerY: r.tRex.yPos,
-                playerX: r.tRex.xPos,
-                playerWidth: r.tRex.config.WIDTH,
-                obstacles: obs.map(o => ({xPos: o.xPos, yPos: o.yPos, width: o.width, height: o.height})),
-                terminal:  r.crashed  
-            };  
+                jumpVelocity: r.tRex.jumpVelocity
+                
+            }; 
         }
         """)
         
@@ -253,22 +167,20 @@ class DinoGame:
         isJumping = stateInfo["jumping"]
         
         if done:
-            return None, -100, done 
+            return None, -100, done, None
         
-        #if previous_reward == 10:
-        #    for obs in stateInfo['obstacles']:
-        #        if obs['xPos'] > stateInfo['playerX'] + stateInfo["playerWidth"]:  # Only consider obstacles that are ahead of the player
-        #            obstacle = obs
-        #            break
-        #else:
-        
-        obstacle = stateInfo["obstacles"][0] if len(stateInfo["obstacles"]) > 0 else None
+        obstacle = None
+        for obs in stateInfo['obstacles']:
+            if obs['id'] != self.last_passed_obs_id:  # Only consider obstacles that are ahead of the player
+                obstacle = obs
+                break
         
         reward = 0.1
 
         if obstacle is not None:
             if obstacle["xPos"] + obstacle["width"] + 5 < stateInfo["playerX"]:
                 reward = 10
+                self.last_passed_obs_id = obstacle["id"]
             elif isJumping and obstacle["xPos"] > 150:
                 reward = -0.1
             elif not isJumping and obstacle["xPos"] < 10:
@@ -276,10 +188,15 @@ class DinoGame:
                         
         # state details 
         v = round(stateInfo["speed"], 1)
-        pos = round(obstacle["xPos"] / 10) if obstacle is not None else None
+        pos = (obstacle["xPos"]) if obstacle is not None else None
+        if pos is not None:
+            pos = min(pos, 150)
         w = obstacle["width"] if obstacle is not None else None
         
-        return (v, pos, w, isJumping), reward, done 
+        jumpVel = -1 if stateInfo["jumpVelocity"] < 0 else 1 if stateInfo["jumpVelocity"] > 0 else 0
+        
+        #print(obstacle, v, pos, w, isJumping, reward)
+        return (v, pos, w, jumpVel), reward, done, (obstacle["id"] if obstacle is not None else None)
 
     def perform_action(self, action):
         if action == "jump":
@@ -309,29 +226,28 @@ class DinoWorld(World):
     def step(self, state, action, reward=None):
         self.game.perform_action(action=action)
         #self.game.page.wait_for_timeout(0.01)
-        time.sleep(0.001)
+        #time.sleep(0.001)
         return self.game.get_env_state(previous_reward=reward)
 
 
-    def train(self, agent, episodes=1000, visualize=False, delay=0.1, show_heatmap=False):
+    def train(self, agent:Agent, episodes=1000, visualize=False, delay=0.1, show_heatmap=False):
         episode_rewards = []
         
         if visualize:
             plt.ion()
             
-        for _ in range(episodes):
+        for episode in range(episodes):
             state = self.reset()
-            print("reseting")
             done = False
             total_reward = 0
             preveReward = 0
             while not done:
                 action = agent.choose_action(state)
-                next_state, reward, done = self.step(state, action, reward=preveReward)
+                next_state, reward, done, id = self.step(state, action, reward=preveReward)
                 total_reward += reward
                 
                 if reward == 10 or reward == -100:
-                    print(state, action, reward, next_state)
+                    print(state, action, reward, id, next_state)
                 
                 agent.learn(state, action, reward, next_state)
                 state = next_state
@@ -348,6 +264,9 @@ class DinoWorld(World):
     
             time.sleep(2)
             episode_rewards.append(total_reward)
+            
+            if episode % 50 == 0:
+                agent.export_q_table(f"q_table_{episode}.pkl")
         
         if visualize:
             plt.ioff()
