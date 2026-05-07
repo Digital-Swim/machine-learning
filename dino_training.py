@@ -11,7 +11,7 @@ with sync_playwright() as p:
         page.evaluate(f.read())
 
     # start training
-    page.evaluate("startDinoTraining(1000)")
+    page.evaluate("startDinoTraining(10000)")
 
     # optional: wait / inspect 
 
