@@ -11,14 +11,14 @@ with sync_playwright() as p:
         page.evaluate(f.read())
 
     # start training
-    page.evaluate("startDinoTraining(10000)")
+    page.evaluate("startDinoTraining(1)")
 
     # optional: wait / inspect 
 
     input("Press Enter to export Q-table...")
 
     with page.expect_download() as download_info:
-        page.evaluate("window.__agent.exportQTableCSV()")
+        page.evaluate("window.browserControls.exportQTableCSV()")
 
     download = download_info.value
 
