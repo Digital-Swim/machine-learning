@@ -11,18 +11,29 @@ with sync_playwright() as p:
         page.evaluate(f.read())
 
     # start training
-    page.evaluate("startDinoTraining(1)")
+    page.evaluate("setupTrainingEnv(1)")
 
     # optional: wait / inspect 
+    #input("Press Enter to export Q-table...")
 
-    input("Press Enter to export Q-table...")
+    episode = 0
+    totalEpisode = 2
+    step = 1
 
-    with page.expect_download() as download_info:
-        page.evaluate("window.browserControls.exportQTableCSV()")
+    while episode <= totalEpisode:
+        page.evaluate(
+            f"window.browserControls.runGame({step})"
+        )
 
-    download = download_info.value
+        episode += step
 
-    download.save_as("q_table.csv")
+        with page.expect_download() as download_info:
+            page.evaluate(
+                f'window.browserControls.exportQTableCSV("qTable_{episode}.csv")'
+            )
+
+        download = download_info.value
+        download.save_as(f"qTable_{episode}.csv")
     
     input("Press Enter to close...")
     browser.close()

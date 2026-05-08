@@ -593,9 +593,7 @@ class BrowserControls {
     // CSV EXPORT
     // ─────────────────────────────────────
 
-    exportQTableCSV() {
-        
-        debugger;
+    exportQTableCSV(filename) {
 
         const rows = [
             [
@@ -629,7 +627,7 @@ class BrowserControls {
         const a = document.createElement("a");
 
         a.href = url;
-        a.download = "q_table.csv";
+        a.download = filename ?? "q_table.csv";
         a.click();
 
         URL.revokeObjectURL(url);
@@ -703,14 +701,14 @@ class BrowserControls {
         return qTable;
     }
 
-    async runGame(){
+    async runGame(episodes){
         
         if (this.running) return;
         
         const rewards = [];
         this.running = true;
 
-        for (let ep = 0; ep < this.episodes; ep++) {
+        for (let ep = 0; ep < episodes ?? this.episodes; ep++) {
             const totalReward = await this.env.run_episode(this.agent);
             rewards.push(totalReward);
             this.drawChart(rewards, ep);
@@ -721,9 +719,7 @@ class BrowserControls {
     }
 }
 
-let browser = null;
-async function start(episodes = 300) {
-
+async function setupTrainingEnv(episodes = 300) {
     const env = new DinoEnv(10);
     const agent = new QLearningAgent(["jump", "do_nothing", "duck_on", "duck_off"], 0.1, 0.1, 0.1);
     browser = new BrowserControls({env, agent, episodes});
@@ -732,6 +728,6 @@ async function start(episodes = 300) {
 }
 
 // expose globally
-window.startDinoTraining = start;
+window.setupTrainingEnv = setupTrainingEnv;
 
 })();
