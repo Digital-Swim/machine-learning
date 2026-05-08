@@ -15,7 +15,22 @@ class QLearningAgent {
     }
 
     key(state, action) {
-        return JSON.stringify({ state, action });
+        const s = this.normalizeState(state);
+        return `${s.join(",")}|${action}`;
+    }
+
+    decodeKey(key) {
+        const [stateStr, action] = key.split("|");
+        const state = stateStr.split(",").map(Number);
+        return { state, action };
+    }
+
+    normalizeState(state) {
+        return state.map(v => {
+            if (v === null || v === undefined) return 0;
+            if (typeof v === "boolean") return v ? 1 : 0;
+            return v;
+        });
     }
 
     getQ(state, action) {
@@ -204,200 +219,6 @@ class DinoEnv {
     }
 }
 
-class RewardChart {
-    constructor(options = {}) {
-        this.rootId = options.rootId || "main-frame-error";
-        this.canvasId = options.canvasId || "rewardChart";
-        this.infoId = options.infoId || "rewardInfo";
-
-        this.canvas = null;
-        this.ctx = null;
-        this.infoElement = null;
-    }
-
-    // ─────────────────────────────────────
-    // HTML
-    // ─────────────────────────────────────
-
-    createHTML() {
-        this.createCanvas();
-        this.createInfoElement();
-    }
-
-    createCanvas() {
-        let canvas = document.getElementById(this.canvasId);
-
-        if (!canvas) {
-            canvas = document.createElement("canvas");
-
-            canvas.id = this.canvasId;
-            canvas.width = 700;
-            canvas.height = 400;
-
-            Object.assign(canvas.style, {
-                border: "1px solid #ccc",
-                marginTop: "16px",
-                display: "block"
-            });
-
-            const root = document.getElementById(this.rootId);
-
-            root?.appendChild(canvas);
-        }
-
-        this.canvas = canvas;
-        this.ctx = canvas.getContext("2d");
-
-        return canvas;
-    }
-
-    createInfoElement() {
-        if (!this.canvas) {
-            return null;
-        }
-
-        let info = document.getElementById(this.infoId);
-
-        if (!info) {
-            info = document.createElement("div");
-
-            info.id = this.infoId;
-
-            Object.assign(info.style, {
-                position: "absolute",
-                left: `${this.canvas.offsetLeft}px`,
-                top: `${this.canvas.offsetTop}px`,
-                padding: "6px 10px",
-                font: "12px monospace",
-                background: "rgba(0,0,0,0.7)",
-                color: "#0f0",
-                borderRadius: "4px",
-                pointerEvents: "none"
-            });
-
-            document.body.appendChild(info);
-        }
-
-        this.infoElement = info;
-
-        return info;
-    }
-
-    // ─────────────────────────────────────
-    // DRAW
-    // ─────────────────────────────────────
-
-    draw(data = [], episode = 0) {
-        if (!this.canvas || !this.ctx || data.length < 2) {
-            return;
-        }
-
-        const ctx = this.ctx;
-        const { width, height } = this.canvas;
-
-        ctx.clearRect(0, 0, width, height);
-
-        const padding = 40;
-
-        const maxReward = Math.max(...data);
-        const minReward = Math.min(...data);
-
-        const chartWidth = width - padding * 2;
-        const chartHeight = height - padding * 2;
-
-        const xStep = chartWidth / (data.length - 1);
-
-        const normalizeY = value => {
-            return (
-                height -
-                padding -
-                ((value - minReward) / (maxReward - minReward || 1)) *
-                    chartHeight
-            );
-        };
-
-        this.drawAxes(ctx, width, height, padding);
-        this.drawLine(ctx, data, padding, xStep, normalizeY);
-        this.drawPoints(ctx, data, padding, xStep, normalizeY);
-
-        this.drawLabels({
-            ctx,
-            padding,
-            width,
-            height,
-            episode,
-            latest: data[data.length - 1],
-            maxReward,
-            minReward
-        });
-    }
-
-    drawAxes(ctx, width, height, padding) {
-        ctx.strokeStyle = "#333";
-        ctx.lineWidth = 1;
-
-        ctx.beginPath();
-        ctx.moveTo(padding, padding);
-        ctx.lineTo(padding, height - padding);
-        ctx.lineTo(width - padding, height - padding);
-        ctx.stroke();
-    }
-
-    drawLine(ctx, data, padding, xStep, normalizeY) {
-        ctx.strokeStyle = "#0ea5e9";
-        ctx.lineWidth = 2;
-
-        ctx.beginPath();
-        ctx.moveTo(padding, normalizeY(data[0]));
-
-        data.slice(1).forEach((value, index) => {
-            const x = padding + (index + 1) * xStep;
-            const y = normalizeY(value);
-
-            ctx.lineTo(x, y);
-        });
-
-        ctx.stroke();
-    }
-
-    drawPoints(ctx, data, padding, xStep, normalizeY) {
-        ctx.fillStyle = "#f97316";
-
-        data.forEach((value, index) => {
-            const x = padding + index * xStep;
-            const y = normalizeY(value);
-
-            ctx.beginPath();
-            ctx.arc(x, y, 3, 0, Math.PI * 2);
-            ctx.fill();
-        });
-    }
-
-    drawLabels({
-        ctx,
-        padding,
-        width,
-        height,
-        episode,
-        latest,
-        maxReward,
-        minReward
-    }) {
-        ctx.fillStyle = "#111";
-        ctx.font = "12px monospace";
-
-        const labels = [
-            `Canvas: ${width}x${height}`,
-            `Episode: ${episode}`,
-            `Latest Reward: ${latest.toFixed(2)}`,
-            `Max: ${maxReward.toFixed(2)}  Min: ${minReward.toFixed(2)}`
-        ];
-
-        labels.forEach((label, index) => {
-            ctx.fillText(label, padding, 18 + index * 16);
-        });
-    }
-}
 
 class BrowserControls {
 
@@ -409,11 +230,9 @@ class BrowserControls {
         this.agent = options.agent;
         this.episodes = options.episodes || 100;
 
-        this.rootId = options.rootId || "main-frame-error";
-
-        this.chart = new RewardChart({
-            rootId: this.rootId,
-            canvasId: options.canvasId
+        this.dashboard = new LiveDashboard({
+            rootId:  "main-frame-error",
+            threshold: 0.001
         });
     }
 
@@ -448,7 +267,6 @@ class BrowserControls {
     // ─────────────────────────────────────
 
     createHTML() {
-        this.chart.createHTML();
         this.createControls();
     }
 
@@ -585,8 +403,11 @@ class BrowserControls {
     // CHART
     // ─────────────────────────────────────
 
-    drawChart(data = [], episode = 0) {
-        this.chart.draw(data, episode);
+    updateCharts(reward, newQTable) {
+        this.dashboard.update({
+             reward,
+            newQ:this.agent.qTable
+        })
     }
 
     // ─────────────────────────────────────
@@ -610,7 +431,8 @@ class BrowserControls {
         ];
 
         for (const [key, value] of this.agent.qTable.entries()) {
-            const { state, action } = JSON.parse(key);
+
+            const { state, action} = this.agent.decodeKey(key);
 
             rows.push([
                 ...state,
@@ -619,13 +441,14 @@ class BrowserControls {
             ]);
         }
 
-        const csv = rows.map(row => row.join(",")).join("\n");
+        const csv = rows
+            .map(row => row.join(","))
+            .join("\n");
 
         const blob = new Blob([csv], { type: "text/csv" });
         const url = URL.createObjectURL(blob);
 
         const a = document.createElement("a");
-
         a.href = url;
         a.download = filename ?? "q_table.csv";
         a.click();
@@ -648,7 +471,7 @@ class BrowserControls {
             if (!file) {
                 return;
             }
-            this.agent.setQTable(await this.loadQTableFromFile(file));
+            await this.loadQTableFromFile(file)
         });
 
         input.click();
@@ -657,11 +480,7 @@ class BrowserControls {
     async loadQTableFromFile(file) {
         const text = await file.text();
 
-        return this.loadQTableFromCSV(text);
-    }
-
-    loadQTableFromCSV(csvText) {
-        const lines = csvText.trim().split("\n");
+        const lines = text.trim().split("\n");
 
         const qTable = new Map();
 
@@ -683,39 +502,360 @@ class BrowserControls {
                 Number(t),
                 Number(g),
                 Number(w),
-                j === "true",
-                d === "true",
-                a === "true"
+                Number(j),
+                Number(d),
+                Number(a)
             ];
 
-            const key = JSON.stringify({
-                state,
-                action
-            });
+            const key = this.agent.key(state, action)
 
             qTable.set(key, Number(qValue));
         }
 
         console.log(`QTable loaded: ${qTable.size}`);
 
-        return qTable;
+        this.agent.qTable = qTable;
+
     }
+
+
 
     async runGame(episodes){
         
         if (this.running) return;
         
-        const rewards = [];
         this.running = true;
 
         for (let ep = 0; ep < episodes ?? this.episodes; ep++) {
+            
             const totalReward = await this.env.run_episode(this.agent);
-            rewards.push(totalReward);
-            this.drawChart(rewards, ep);
+            const status = this.dashboard.update({
+                    reward:totalReward,
+                    newQ:this.agent.qTable
+                });
+
+                console.log(status);
+
+            if (status.converged) {
+                console.log("Training stabilized (ΔQ < threshold)");
+            }
         }
 
         this.running = false;
 
+    }
+}
+
+class BaseChart {
+    constructor(options = {}) {
+        this.rootId = options.rootId || "main-frame-error";
+        this.canvasId = options.canvasId;
+        this.width = options.width || 700;
+        this.height = options.height || 400;
+
+        this.canvas = null;
+        this.ctx = null;
+    }
+
+    createCanvas() {
+        let canvas = document.getElementById(this.canvasId);
+
+        if (!canvas) {
+            canvas = document.createElement("canvas");
+            canvas.id = this.canvasId;
+            canvas.width = this.width;
+            canvas.height = this.height;
+
+            Object.assign(canvas.style, {
+                border: "1px solid #ccc",
+                marginTop: "16px",
+                display: "block"
+            });
+
+            const root = document.getElementById(this.rootId);
+            root?.appendChild(canvas);
+        }
+
+        this.canvas = canvas;
+        this.ctx = canvas.getContext("2d");
+
+        return canvas;
+    }
+
+    clear() {
+        if (!this.ctx) return;
+        this.ctx.clearRect(0, 0, this.width, this.height);
+    }
+
+    drawAxes(padding = 40) {
+        const ctx = this.ctx;
+
+        ctx.strokeStyle = "#333";
+        ctx.lineWidth = 1;
+
+        ctx.beginPath();
+        ctx.moveTo(padding, padding);
+        ctx.lineTo(padding, this.height - padding);
+        ctx.lineTo(this.width - padding, this.height - padding);
+        ctx.stroke();
+    }
+
+    normalizeY(value, min, max, chartHeight, padding) {
+        return (
+            this.height -
+            padding -
+            ((value - min) / (max - min || 1)) * chartHeight
+        );
+    }
+}
+
+class RewardChart extends BaseChart {
+    constructor(options = {}) {
+        super({ ...options, canvasId: options.canvasId || "rewardChart" });
+
+        this.createCanvas();
+    }
+
+    draw(data = [], episode = 0) {
+        if (!this.ctx || data.length < 2) return;
+
+        const ctx = this.ctx;
+        const padding = 40;
+
+        const maxReward = Math.max(...data);
+        const minReward = Math.min(...data);
+
+        const chartWidth = this.width - padding * 2;
+        const chartHeight = this.height - padding * 2;
+
+        const xStep = chartWidth / (data.length - 1);
+
+        this.clear();
+        this.drawAxes(padding);
+
+        const normalizeY = (v) =>
+            this.normalizeY(v, minReward, maxReward, chartHeight, padding);
+
+        this.drawLine(data, padding, xStep, normalizeY);
+        this.drawPoints(data, padding, xStep, normalizeY);
+        this.drawLabels(data, episode, minReward, maxReward, padding);
+    }
+
+    drawLine(data, padding, xStep, normalizeY) {
+        const ctx = this.ctx;
+
+        ctx.strokeStyle = "#0ea5e9";
+        ctx.lineWidth = 2;
+
+        ctx.beginPath();
+        ctx.moveTo(padding, normalizeY(data[0]));
+
+        data.forEach((v, i) => {
+            const x = padding + i * xStep;
+            const y = normalizeY(v);
+            ctx.lineTo(x, y);
+        });
+
+        ctx.stroke();
+    }
+
+    drawPoints(data, padding, xStep, normalizeY) {
+        const ctx = this.ctx;
+
+        ctx.fillStyle = "#f97316";
+
+        data.forEach((v, i) => {
+            const x = padding + i * xStep;
+            const y = normalizeY(v);
+
+            ctx.beginPath();
+            ctx.arc(x, y, 3, 0, Math.PI * 2);
+            ctx.fill();
+        });
+    }
+
+    drawLabels(data, episode, min, max, padding) {
+        const ctx = this.ctx;
+
+        ctx.fillStyle = "#111";
+        ctx.font = "12px monospace";
+
+        const latest = data[data.length - 1];
+
+        const labels = [
+            `Episode: ${episode}`,
+            `Latest Reward: ${latest.toFixed(2)}`,
+            `Max: ${max.toFixed(2)} Min: ${min.toFixed(2)}`
+        ];
+
+        labels.forEach((t, i) => {
+            ctx.fillText(t, padding, 18 + i * 16);
+        });
+    }
+}
+
+class QConvergenceChart extends BaseChart {
+    constructor(options = {}) {
+        super({ ...options, canvasId: options.canvasId || "qConvChart" });
+
+        this.threshold = options.threshold || 0.001;
+
+        this.labels = [];
+        this.deltas = [];
+
+        this.createCanvas();
+    }
+
+    computeMaxDelta(oldQ, newQ) {
+        let maxDelta = 0;
+        for (const [key, newVal] of newQ.entries()) {
+            const oldVal = oldQ.get(key) ?? 0;
+            const diff = Math.abs(newVal - oldVal);
+            if (diff > maxDelta) {
+                maxDelta = diff;
+            }
+        }
+        return maxDelta;
+    }
+
+    update(episode, oldQ, newQ) {
+        const delta = this.computeMaxDelta(oldQ, newQ);
+
+        this.labels.push(episode);
+        this.deltas.push(delta);
+
+        this.render();
+
+        return {
+            delta,
+            converged: delta < this.threshold
+        };
+    }
+
+    render() {
+        if (!this.ctx || this.deltas.length < 2) return;
+
+        const ctx = this.ctx;
+        const padding = 40;
+
+        const max = Math.max(...this.deltas);
+        const min = Math.min(...this.deltas);
+
+        const chartWidth = this.width - padding * 2;
+        const chartHeight = this.height - padding * 2;
+
+        const xStep = chartWidth / (this.deltas.length - 1);
+
+        this.clear();
+        this.drawAxes(padding);
+
+        const normalizeY = (v) =>
+            this.normalizeY(v, min, max, chartHeight, padding);
+
+        ctx.strokeStyle = "#ef4444";
+        ctx.lineWidth = 2;
+
+        ctx.beginPath();
+        ctx.moveTo(padding, normalizeY(this.deltas[0]));
+
+        this.deltas.forEach((v, i) => {
+            const x = padding + i * xStep;
+            const y = normalizeY(v);
+            ctx.lineTo(x, y);
+        });
+
+        ctx.stroke();
+
+        ctx.fillStyle = "#111";
+        ctx.font = "12px monospace";
+
+        ctx.fillText(
+            `Delta Q latest: ${this.deltas.at(-1).toFixed(6)}`,
+            padding,
+            20
+        );
+    }
+}
+
+class LiveDashboard {
+    constructor(options = {}) {
+        this.rootId = options.rootId || "main-frame-error";
+
+        this.rewardChart = new RewardChart({
+            rootId: this.rootId,
+            canvasId: "rewardChart"
+        });
+
+        this.qChart = new QConvergenceChart({
+            rootId: this.rootId,
+            canvasId: "qConvChart",
+            threshold: options.threshold || 0.001
+        });
+
+        this.episode = 0;
+
+        this.rewards = [];
+        this.oldQ = null;
+
+        this.init();
+    }
+
+    init() {
+        const root = document.getElementById(this.rootId);
+
+        const title = document.createElement("h3");
+        title.innerText = "RL Live Dashboard";
+        root.appendChild(title);
+
+        this.rewardChart.createCanvas();
+        this.qChart.createCanvas();
+    }
+
+    /**
+     * Call this after every episode
+     */
+    update({ reward, newQ }) {
+        this.episode += 1;
+
+        // ─────────────────────────────
+        // 1. reward tracking
+        // ─────────────────────────────
+        this.rewards.push(reward);
+        this.rewardChart.draw(this.rewards, this.episode);
+
+        // ─────────────────────────────
+        // 2. Q convergence tracking
+        // ─────────────────────────────
+        let result = null;
+
+        if (this.oldQ) {
+            result = this.qChart.update(
+                this.episode,
+                this.oldQ,
+                newQ
+            );
+        }
+
+        this.oldQ = structuredClone(newQ);
+
+        // ─────────────────────────────
+        // 3. return diagnostic state
+        // ─────────────────────────────
+        return {
+            episode: this.episode,
+            reward,
+            avgReward: this.avgReward(),
+            qDelta: result?.delta ?? null,
+            converged: result?.converged ?? false
+        };
+    }
+
+    avgReward(window = 50) {
+        const slice = this.rewards.slice(-window);
+
+        if (slice.length === 0) return 0;
+
+        return slice.reduce((a, b) => a + b, 0) / slice.length;
     }
 }
 

@@ -11,14 +11,14 @@ with sync_playwright() as p:
         page.evaluate(f.read())
 
     # start training
-    page.evaluate("setupTrainingEnv(1)")
+    page.evaluate("setupTrainingEnv(1000)")
 
     # optional: wait / inspect 
-    #input("Press Enter to export Q-table...")
+    input("Press Enter to export Q-table...")
 
     episode = 0
-    totalEpisode = 2
-    step = 1
+    totalEpisode = 5000
+    step = 100
 
     while episode <= totalEpisode:
         page.evaluate(
