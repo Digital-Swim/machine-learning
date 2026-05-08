@@ -109,94 +109,156 @@ class DinoEnv {
         const done = r.crashed;
 
         if (done) {
-            return { state: null, reward: -100, done: true };
+            return { state: null, reward: -20, done: true };
         }
 
         let obstacle = obs?.[0] ?? null;
-        const inAir = obstacle  ? ( Runner.defaultDimensions.HEIGHT - Runner.config.BOTTOM_PAD -(obstacle.yPos + obstacle.typeConfig.height)) : null;
-    
+        const obsAboveGround = obstacle  ? ( Runner.defaultDimensions.HEIGHT - Runner.config.BOTTOM_PAD -(obstacle.yPos + obstacle.typeConfig.height)) : null;
+        const timeToCollision = obstacle ? this.bucket(obstacle.xPos / r.currentSpeed, 1, 30) : 999;
+
         let reward = 0.02;
 
         if (obstacle) {
             if (obstacle.xPos + obstacle.width + 5 < player.xPos) {
                 reward = 5;
-            } else if ((player.jumping || player.ducking ) && obstacle.xPos > 150) {
+            } else if ((player.jumping || player.ducking ) && timeToCollision >= 30) {
                 reward = -0.2;
-            } 
+            } else if(player.ducking && timeToCollision < 2){
+                reward = -0.2;
+            }
         }
-        else
-            {
-                // Unneccessory jumping or ducking 
-                if (player.jumping || player.ducking)
-                    {
-                        reward = -0.1;
-                    } 
-        }
-
-        // Time to collision
-        const timeToCollision = obstacle ? Math.min(Math.round(obstacle.xPos / r.currentSpeed), 30) : null;
-        const obsGapBucket = obstacle?.gap == null ? null : Math.min(6, Math.floor(obstacle.gap / 50));
-        const velocity = Math.round(r.currentSpeed * 10) / 10;
-        const pos = obstacle ? Math.min(obstacle.xPos, 150) : null;
-        const obsWidth = obstacle ? obstacle.width : null;
-
-        const playerAction = player.ducking ? 2 :
-            ( player.jumpVelocity < 0 ? -1 :
-              player.jumpVelocity > 0 ? 1 : 0 );
-                
-        if(obstacle){
-
-            console.log(
-            'time to collsion:', obstacle.xPos / r.currentSpeed,
-            'velocity:', r.currentSpeed ,
-            'gapBucket:', obstacle.gap ,
-            'obs width:', obstacle.width,
-            'obs in air:', inAir,
-            'reward:', reward
-            ); 
+        else {
+            // Unneccessory jumping or ducking 
+            if (player.jumping || player.ducking)
+                {
+                    reward = -0.1;
+                } 
         }
 
-        if (reward == 10 || reward == -100){
-            console.log(
-            'time to collsion:', timeToCollision,
-            'gapBucket:', obsGapBucket,
-            'width:', obsWidth,
-            'playerAction:', playerAction,
-            'heightAboveTheGround:', inAir,
-            'reward:', reward
-            );        
-        }
+        
+        const speed = this.bucket(r.currentSpeed * 10, 5); // Math.round(r.currentSpeed * 10);
+        const distance = obstacle ?  this.bucket(obstacle.xPos, 10, 15) : null;
+        const obsGap = obstacle ?  this.bucket(obstacle.gap, 50, 6) : null;   // Math.min(6, Math.floor(obstacle.gap / 50));
+        const obsWidth = obstacle ? this.bucket(obstacle.width, 10) : null;
+        const isJumping = player.jumping;
+        const isDucking = player.ducking;
+        
+        
 
         return {
-            state: [timeToCollision, obsGapBucket, obsWidth, playerAction, inAir],
+            state: [speed, timeToCollision, obsGap, obsWidth, isJumping, isDucking, obsAboveGround],
             reward,
             done
         };
     }
 
-    step(action) {
-        const r = window.Runner.instance_;
-        if(!r.tRex.jumping && !r.tRex.ducking){
-            if (action === "jump") {
-                r.tRex.startJump(r.currentSpeed);
-            }
-            if (action === "duck") {
-                r.tRex.setDuck(true);
-                setTimeout(() => r.tRex.setDuck(false), 20);
-            }
+    bucket(value, step, maxBucket = Infinity) {
+        return Math.min(
+            maxBucket,
+            Math.floor((value) / step)
+        );
+    }
+
+step(action) {
+    const KEY = {
+        jump: 32,
+        duck: 40
+    };
+
+    function fire(type, keyCode) {
+        const e = new KeyboardEvent(type, {
+            bubbles: true,
+            cancelable: true
+            });
+
+            Object.defineProperty(e, 'keyCode', { value: keyCode });
+            Object.defineProperty(e, 'which', { value: keyCode });
+
+            document.dispatchEvent(e);
         }
+
+        console.log(action)
+
+        switch (action) {
+            case "jump":
+                fire("keydown", KEY.jump);
+                fire("keyup", KEY.jump);
+                break;
+
+            case "duck_on":
+                fire("keydown", KEY.duck);
+                break;
+            
+            case "duck_off":
+                fire("keyup", KEY.duck);
+                break;
+            
+                case "do_nothing":
+            default:
+                break;
+        }
+
         return this.getState();
     }
 
     reset() {
         const r = window.Runner.instance_;
         r.restart();
-        this.lastPassedObsId = null;
         return this.getState();
     }
 }
 
 async function train(episodes = 300, delay = 20) {
+
+    create_chart();
+
+    const env = new DinoEnv();
+    const agent = new QLearningAgent(["jump", "do_nothing", "duck_on", "duck_off"]);
+    const rewards = [];
+    let frameSkip = 10;
+
+    for (let ep = 0; ep < episodes; ep++) {
+        
+        let result = env.reset();
+        if (!result) continue;
+
+        let state = result.state;
+        let done = false;
+        let totalReward = 0;
+
+        while (!done) {
+
+            const action = agent.chooseAction(state);
+            
+            for (let i = 0; i < frameSkip; i++) {
+                await new Promise(requestAnimationFrame);
+            }
+            
+            const stepResult = await env.step(action);
+
+            const nextState = stepResult.state;
+            const reward = stepResult.reward;
+            done = stepResult.done ;
+            
+            console.log(state, action, reward, nextState)
+            agent.learn(state, action, reward, nextState);
+
+            state = nextState;
+            totalReward += reward;
+
+        }
+
+        rewards.push(totalReward);
+        drawChart(rewards, ep);
+        //agent.epsilon = Math.max(0.01, agent.epsilon * 0.995);
+    }
+
+    window.__agent = agent;
+
+    return "training_done";
+}
+
+function create_chart(){
 
     let canvas = document.getElementById("rewardChart");
 
@@ -236,66 +298,13 @@ async function train(episodes = 300, delay = 20) {
 
         document.body.appendChild(info);
     }
-
-   // mouse tracking
-    let mouse = { x: 0, y: 0 };
-
-    canvas.addEventListener("mousemove", (e) => {
-        const rect = canvas.getBoundingClientRect();
-        mouse.x = e.clientX - rect.left;
-        mouse.y = e.clientY - rect.top;
-    });
-    
-    const env = new DinoEnv();
-    const agent = new QLearningAgent(["jump", "do_nothing", "duck"]);
-    const rewards = [];
-
-
-    for (let ep = 0; ep < episodes; ep++) {
-        let result = env.reset();
-
-        if (!result) continue;
-
-        let state = result.state;
-        let done = false;
-        let totalReward = 0;
-
-        while (!done) {
-
-            // if (!state || state.includes(null)) {
-            //     await new Promise(r => setTimeout(r, delay));
-            //     continue;
-            // }
-
-            const action = agent.chooseAction(state);
-
-            const stepResult = env.step(action);
-
-            const nextState = stepResult?.state;
-            const reward = stepResult?.reward ?? 0;
-            done = stepResult?.done ?? true;
-            
-            agent.learn(state, action, reward, nextState);
-
-            state = nextState;
-            totalReward += reward;
-
-            await new Promise(r => setTimeout(r, delay));
-        }
-
-        rewards.push(totalReward);
-        drawChart(ctx, canvas, rewards, ep, mouse);
-        console.log(`Episode ${ep} → reward: ${totalReward}`);
-        agent.epsilon = Math.max(0.01, agent.epsilon * 0.995);
-    }
-
-    window.__agent = agent;
-
-    return "training_done";
 }
 
-function drawChart(ctx, canvas, data, episode, mouse) {
+function drawChart(data, episode) {
 
+    const canvas = document.getElementById("rewardChart");
+    const ctx = canvas.getContext("2d");
+   
     const width = canvas.width;
     const height = canvas.height;
 
@@ -367,20 +376,7 @@ function drawChart(ctx, canvas, data, episode, mouse) {
     ctx.fillText(`Latest Reward: ${latest.toFixed(2)}`, padding, 45);
     ctx.fillText(`Max: ${maxReward.toFixed(2)} Min: ${minReward.toFixed(2)}`, padding, 60);
 
-    // ─────────────────────────────
-    // mouse X/Y readout (data space)
-    // ─────────────────────────────
-    if (mouse) {
-        const i = Math.floor((mouse.x - padding) / xStep);
 
-        if (i >= 0 && i < data.length) {
-            const xVal = i;
-            const yVal = data[i];
-
-            ctx.fillStyle = "#ff00ff";
-            ctx.fillText(`X: ${xVal} Y: ${yVal.toFixed(2)}`, mouse.x + 10, mouse.y);
-        }
-    }
 }
 // expose globally
 window.startDinoTraining = train;
