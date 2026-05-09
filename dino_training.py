@@ -17,7 +17,7 @@ with sync_playwright() as p:
     input("Press Enter to export Q-table...")
 
     episode = 0
-    totalEpisode = 5000
+    totalEpisode = 10000
     step = 100
 
     while episode <= totalEpisode:
@@ -29,11 +29,11 @@ with sync_playwright() as p:
 
         with page.expect_download() as download_info:
             page.evaluate(
-                f'window.browserControls.exportQTableCSV("qTable_{episode}.csv")'
+                f'window.browserControls.exportQTableCSV("1qTable_{episode}.csv")'
             )
 
         download = download_info.value
-        download.save_as(f"qTable_{episode}.csv")
+        download.save_as(f"1qTable_{episode}.csv")
     
     input("Press Enter to close...")
     browser.close()

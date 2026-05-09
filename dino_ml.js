@@ -1,13 +1,13 @@
 (() => {
 
 class QLearningAgent {
-    constructor(actions, alpha = 0.1, gamma = 0.9, epsilon = 0.1, qTable = null) {
+    constructor(actions, alpha = 0.1, gamma = 0.9, epsilon = 0.1) {
         this.actions = actions;
         this.alpha = alpha;
         this.gamma = gamma;
         this.epsilon = epsilon;
-        this.qTable = qTable ?? new Map();
-        this.training = false;
+        this.qTable = new Map();
+        this.training = true;
     }
 
     setQTable(qTable){
@@ -53,23 +53,123 @@ class QLearningAgent {
         return best[Math.floor(Math.random() * best.length)];
     }
 
-    learn(state, action, reward, nextState) {
+    learn(state, action, reward, nextState, done) {
 
         // Not training then do not learn
         if(!this.training) return;
 
-        if (!state || !nextState) return;
+        if (!state) return;
 
-        const maxNext = Math.max(
-            ...this.actions.map(a => this.getQ(nextState, a))
-        );
+        let target;
+
+        if(done){
+            debugger;
+            target = reward;
+        }
+        else {
+            const maxNext = Math.max(
+                ...this.actions.map(a => this.getQ(nextState, a)));
+            target = reward + this.gamma * maxNext;
+        }
 
         const current = this.getQ(state, action);
 
         const updated =
-            current + this.alpha * (reward + this.gamma * maxNext - current);
+            current + this.alpha * (target - current);
 
         this.qTable.set(this.key(state, action), updated);
+    }
+
+   
+}
+
+class QLearningAgentNStep extends QLearningAgent{
+    constructor(actions, alpha = 0.1, gamma = 0.9, epsilon = 0.1, steps = 5) {
+        super(actions, alpha, gamma, epsilon);
+        this.steps = steps;
+        this.memory = [];
+    }
+
+    learn(state, action, reward, nextState, done = false) {
+
+        debugger;
+
+        // Not training then do not learn
+        if(!this.training) return;
+
+        if (!state) return;
+
+        this.memory.push({ state, action, reward, nextState, done });
+
+        if (this.memory.length < this.steps && !done){
+            return
+        }
+
+        const steps = Math.min(this.steps, this.memory.length);
+        const first = this.memory[0];
+        let G = 0;
+
+        // adding all the rewards for n states 
+        for(let i = 0; i < steps; i++){
+            G += Math.pow(this.gamma, i) * this.memory[i].reward;
+        }
+
+        const lastTransition = this.memory[steps - 1];
+
+        // If not terminated, then also add the next state reward 
+        if (!lastTransition.done) {
+            const maxNext = Math.max(
+                ...this.actions.map(a =>
+                    this.getQ(lastTransition.nextState, a)
+                )
+            );
+            G += Math.pow(this.gamma, steps) * maxNext;
+        }
+
+        const current = this.getQ(first.state, first.action);
+
+        const updated =
+            current + this.alpha * (G - current);
+
+        this.qTable.set(
+            this.key(first.state, first.action),
+            updated
+        );
+
+        this.memory.shift();
+
+        if (done) {
+            this.flush();
+        }
+
+    }
+
+    flush() {
+
+        while (this.memory.length > 0) {
+
+            const steps = this.memory.length;
+
+            const first = this.memory[0];
+
+            let G = 0;
+
+            for (let i = 0; i < steps; i++) {
+                G += Math.pow(this.gamma, i) * this.memory[i].reward;
+            }
+
+            const current = this.getQ(first.state, first.action);
+
+            const updated =
+                current + this.alpha * (G - current);
+
+            this.qTable.set(
+                this.key(first.state, first.action),
+                updated
+            );
+
+            this.memory.shift();
+        }
     }
 
    
@@ -89,23 +189,30 @@ class DinoEnv {
         const player = r.tRex;
         const obs = r.horizon.obstacles;
         const done = r.crashed;
+        const maxDist = 100000;
+
 
         if (done) {
             return { state: null, reward: -20, done: true };
         }
 
+        if(player.distanceRan *  0.025 > maxDist) {
+            return { state: null, reward: 10, done: true };
+        }
+
         let obstacle = obs?.[0] ?? null;
         const obsAboveGround = obstacle  ? ( Runner.defaultDimensions.HEIGHT - Runner.config.BOTTOM_PAD -(obstacle.yPos + obstacle.typeConfig.height)) : null;
-        const timeToCollision = obstacle ? this.bucket(obstacle.xPos / r.currentSpeed, 1, 30) : 999;
+        const timeToCollision = obstacle ? this.bucket(obstacle.xPos / r.currentSpeed, 1, 50) : 999;
 
-        let reward = 0.02;
+        let reward = 0;
 
         if (obstacle) {
             if (obstacle.xPos + obstacle.width + 5 < player.xPos) {
                 reward = 5;
-            } else if ((player.jumping || player.ducking ) && timeToCollision >= 30) {
+            }
+            else if ((player.jumping || player.ducking ) && timeToCollision >= 50) {
                 reward = -0.2;
-            } else if(player.ducking && timeToCollision < 2){
+            } else if(player.ducking && timeToCollision < 2 && timeToCollision >= 0){
                 reward = -0.2;
             }
         }
@@ -118,16 +225,16 @@ class DinoEnv {
         }
 
         
-        const speed = this.bucket(r.currentSpeed * 10, 5); // Math.round(r.currentSpeed * 10);
-        const distance = obstacle ?  this.bucket(obstacle.xPos, 10, 15) : null;
-        const obsGap = obstacle ?  this.bucket(obstacle.gap, 50, 6) : null;   // Math.min(6, Math.floor(obstacle.gap / 50));
-        const obsWidth = obstacle ? this.bucket(obstacle.width, 10) : null;
-        const isJumping = player.jumping;
-        const isDucking = player.ducking;
-        
-
+        const speed = this.bucket(r.currentSpeed * 10, 3); // Math.round(r.currentSpeed * 10);
+        const distance = obstacle ?  this.bucket(obstacle.xPos, 5, 40) : null;
+        const obsGap = obstacle ?  this.bucket(obstacle.gap, 100, 4) : null;   // Math.min(6, Math.floor(obstacle.gap / 50));
+        const obsWidth = obstacle ? this.bucket(obstacle.width, 5) : null;
+        const playerMode =
+                        player.ducking ? -1 :
+                        player.grounded ? 0 :
+                        player.jumpVelocity > 0 ? 1 : 2;
         return {
-            state: [speed, timeToCollision, obsGap, obsWidth, isJumping, isDucking, obsAboveGround],
+            state: [speed, timeToCollision, obsWidth, obsGap, playerMode, obsAboveGround],
             reward,
             done
         };
@@ -139,15 +246,15 @@ class DinoEnv {
             duck: 40
         };
 
-    function fire(type, keyCode) {
-        const e = new KeyboardEvent(type, {
-            bubbles: true,
-            cancelable: true
-            });
+        function fire(type, keyCode) {
+            const e = new KeyboardEvent(type, {
+                bubbles: true,
+                cancelable: true
+                });
 
-            Object.defineProperty(e, 'keyCode', { value: keyCode });
-            Object.defineProperty(e, 'which', { value: keyCode });
-            document.dispatchEvent(e);
+                Object.defineProperty(e, 'keyCode', { value: keyCode });
+                Object.defineProperty(e, 'which', { value: keyCode });
+                document.dispatchEvent(e);
         }
 
         switch (action) {
@@ -164,7 +271,7 @@ class DinoEnv {
                 fire("keyup", KEY.duck);
                 break;
             
-                case "do_nothing":
+            case "do_nothing":
             default:
                 break;
         }
@@ -202,19 +309,16 @@ class DinoEnv {
             const reward = stepResult.reward;
             done = stepResult.done ;
 
-            console.log(state, action, reward, nextState);
-            agent.learn(state, action, reward, nextState);
+            agent.learn(state, action, reward, nextState, done);
 
             state = nextState;
             totalReward += reward;
 
         }
 
-        this.updateEpsilon(agent);
+        //this.updateEpsilon(agent);
 
-        console.log(agent.epsilon);
-
-        return totalReward;
+       return totalReward;
     }
     
     updateEpsilon(agent) {
@@ -427,14 +531,16 @@ class BrowserControls {
 
     exportQTableCSV(filename) {
 
+        debugger;
+
+        // [speed, timeToCollision, obsWidth, obsGap, playerMode, obsAboveGround]
         const rows = [
             [
                 "Speed",
                 "Time To Collision",
-                "Obs Gap",
                 "Obs Width",
-                "Is Jumping",
-                "Is Ducking",
+                "Obs Gap",
+                "Player Mode",
                 "Obs Above Ground",
                 "Action",
                 "Q Value"
@@ -495,14 +601,14 @@ class BrowserControls {
 
         const qTable = new Map();
 
+        // [speed, timeToCollision, obsWidth, playerMode, obsAboveGround]
         for (let i = 1; i < lines.length; i++) {
             const [
                 s,
                 t,
-                g,
                 w,
-                j,
-                d,
+                g,
+                m,
                 a,
                 action,
                 qValue
@@ -511,10 +617,9 @@ class BrowserControls {
             const state = [
                 Number(s),
                 Number(t),
-                Number(g),
                 Number(w),
-                Number(j),
-                Number(d),
+                Number(g),
+                Number(m),
                 Number(a)
             ];
 
@@ -872,7 +977,7 @@ class LiveDashboard {
 
 async function setupTrainingEnv(episodes = 300) {
     const env = new DinoEnv(10);
-    const agent = new QLearningAgent(["jump", "do_nothing", "duck_on", "duck_off"], 0.1, 0.1, 0.5);
+    const agent = new QLearningAgentNStep(["jump", "do_nothing", "duck_on", "duck_off"], 0.1, 0.1, 0.1, 5);
     browser = new BrowserControls({env, agent, episodes});
     browser.createHTML();
     window.browserControls = browser;
