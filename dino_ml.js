@@ -7,7 +7,7 @@ class QLearningAgent {
         this.gamma = gamma;
         this.epsilon = epsilon;
         this.qTable = qTable ?? new Map();
-        this.training = true;
+        this.training = false;
     }
 
     setQTable(qTable){
@@ -79,6 +79,7 @@ class DinoEnv {
 
     constructor(frameSkip = 10) {
         this.frameSkip = frameSkip;
+
     }
 
     getState() {
@@ -123,7 +124,6 @@ class DinoEnv {
         const obsWidth = obstacle ? this.bucket(obstacle.width, 10) : null;
         const isJumping = player.jumping;
         const isDucking = player.ducking;
-        
         
 
         return {
@@ -175,6 +175,7 @@ class DinoEnv {
     reset() {
         const r = window.Runner.instance_;
         r.restart();
+        //r.currentSpeed = 10;
         return this.getState();
     }
 
@@ -201,6 +202,7 @@ class DinoEnv {
             const reward = stepResult.reward;
             done = stepResult.done ;
 
+            console.log(state, action, reward, nextState);
             agent.learn(state, action, reward, nextState);
 
             state = nextState;
@@ -208,9 +210,18 @@ class DinoEnv {
 
         }
 
+        this.updateEpsilon(agent);
+
+        console.log(agent.epsilon);
+
         return totalReward;
     }
     
+    updateEpsilon(agent) {
+        const min = 0.1;
+        agent.epsilon = Math.max(min, agent.epsilon * 0.997);
+    }
+
     bucket(value, step, maxBucket = Infinity) {
         return Math.min(
             maxBucket,
@@ -861,7 +872,7 @@ class LiveDashboard {
 
 async function setupTrainingEnv(episodes = 300) {
     const env = new DinoEnv(10);
-    const agent = new QLearningAgent(["jump", "do_nothing", "duck_on", "duck_off"], 0.1, 0.1, 0.1);
+    const agent = new QLearningAgent(["jump", "do_nothing", "duck_on", "duck_off"], 0.1, 0.1, 0.5);
     browser = new BrowserControls({env, agent, episodes});
     browser.createHTML();
     window.browserControls = browser;
