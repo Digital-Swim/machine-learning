@@ -7,14 +7,40 @@ with sync_playwright() as p:
     page.goto("https://chromedino.com/")
     page.wait_for_selector("canvas")
 
-    with open("dino_ml.js", "r") as f:
-        page.evaluate(f.read())
+    # Inject D3
+    page.add_script_tag(
+        url="https://d3js.org/d3.v7.min.js"
+    )
+    
+    
+    input("Press Enter to start training...")
+    
+    # Inject RLVisualizer.js
+    page.add_script_tag(
+        path="./dino/rl_visualizer.js"
+    )
+    
+    page.add_script_tag(
+        path="./dino/charts.js"
+    )
+    
+    page.add_script_tag(
+        path="./dino/browser_controls.js"
+    )
+    
+    
+    page.add_script_tag(
+        path="./dino/dino_ml.js"
+    )
+    
+
+    input("Press Enter to start training...")
 
     # start training
     page.evaluate("setupTrainingEnv(1000)")
 
     # optional: wait / inspect 
-    input("Press Enter to export Q-table...")
+    input("Press Enter to run training episodes...")
 
     episode = 0
     totalEpisode = 10000
